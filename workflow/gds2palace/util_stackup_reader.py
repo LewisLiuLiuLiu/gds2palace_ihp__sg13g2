@@ -25,7 +25,7 @@
 # Added docstrings 
 # 20 Nov 2025: added functionality to get relative positions between metals
 
-__version__ = "1.1.0"
+__version__ = "1.1.1"
 
 import os
 import xml.etree.ElementTree 
@@ -241,6 +241,9 @@ class dielectric_layers_list:
         # check if metal is enclosed in dielectric, excluding zmax exactly
         if (metal.zmin >= dielectric.zmin) and (metal.zmax < dielectric.zmax):
           enclosed.append(metal)          
+        # also include metals that fit exactly the height of the dielectric
+        if (metal.zmin == dielectric.zmin) and (metal.zmax == dielectric.zmax):
+          enclosed.append(metal)          
       dielectric.metals_inside = enclosed    
 
 
@@ -453,7 +456,7 @@ def read_substrate (XML_filename):
   """
 
   if os.path.isfile(XML_filename):  
-    print('Reading XML stackup  file:', XML_filename)
+    # print('Reading XML stackup  file:', XML_filename)
 
     # data source is *.subst XML file
     substrate_tree = xml.etree.ElementTree.parse(XML_filename)
@@ -549,12 +552,12 @@ if __name__ == "__main__":
   print('Planar metals: ', planar_metal_names)  
 
   # get all planar metals inside a dielectric
-  SiO2 = dielectrics_list.get_by_name('SiO2')
-  if SiO2 is not None:
+  DK = dielectrics_list.get_by_name('SiO2')
+  if DK is not None:
     names = []
-    metals = SiO2.get_planar_metals_inside()
+    metals = DK.get_planar_metals_inside()
     for metal in metals:
       names.append(metal.name)
-    print('Planar metals inside SiO2: ', names)  
+    print('Planar metals inside ', DK.name, ': ', names)  
  
-
+  
