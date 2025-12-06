@@ -15,7 +15,7 @@ Special thanks to IHP and the public funded German project FMD-QNC (16ME0831) ht
 
 # Documentation
 An extensive documentation is available in PDF format here:
-[gds2palace FEM workflow for IHP](./doc/gds2palace_workflow_October_2025.pdf) 
+[gds2palace FEM workflow for IHP](./doc/gds2palace_workflow_userguide.pdf) 
 
 # System requirements
 This workflow is designed for Linux systems. It creates model files for the AWS Palace FEM solver, 
@@ -45,7 +45,7 @@ The screenshot below shows the workflow: user input is the GDSII layout file and
 ![Workflow overview](./doc/png/workflow_overview.png)
 
 For more details, please have a look at the detailed user's guide.
-[Palace FEM workflow for IHP gds2palace](./doc/Palace_workflow_October_2025.pdf) 
+[gds2palace FEM workflow for IHP](./doc/gds2palace_workflow_userguide.pdf) 
 
 If port geometry information is available, as created by the latest version of gds2palace, an additional file with de-embedded results is created. This is an experimental feature, it adds port de-embedding for lumped ports by cascading negative series L at each port.
 
