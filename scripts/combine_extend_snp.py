@@ -322,6 +322,7 @@ for found_filename in found_datafiles:
 
     else:
         Z0_string = "50"       # default 
+        modelname_from_portinfo = ""
 
 
     # data file items
