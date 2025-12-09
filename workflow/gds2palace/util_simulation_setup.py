@@ -18,12 +18,14 @@
 
 # -*- coding: utf-8 -*-
 
-__version__ = "1.0.5"
+__version__ = "1.1.0"
 
 import os
 import sys
 import gmsh
 import math
+import subprocess
+import platform
 
 import numpy as np
 
@@ -277,6 +279,10 @@ def add_metals (allpolygons, metals_list, meshseed=0):
                     if metal.thickness > 0:
                         kernel.extrude([(2,surfacetag)],0,0,metal.thickness)
 
+    
+    # Try removing duplicates at this stage
+    gmsh.model.occ.removeAllDuplicates()
+
     kernel.synchronize()
 
 
@@ -453,9 +459,6 @@ def add_dielectrics (kernel, materials_list, dielectrics_list, gds_layers_list, 
 
 
     # dielectrics from stackup
-    offset = 0 
-    offset_delta = margin/20 # some relevant offset for alternating dielectric dimensions (workaround for mesh error)
-
     for dielectric in dielectrics_list.dielectrics:
         # get CSX material object for this dielectric layers material name
         materialname = dielectric.material
@@ -490,14 +493,8 @@ def add_dielectrics (kernel, materials_list, dielectrics_list, gds_layers_list, 
         z1 = dielectric.zmin
         z2 = dielectric.zmax
        
-        box_tag = create_box_with_meshseed (kernel, x1-offset, y1-offset, z1, x2+offset, y2+offset, z2, meshseed)
+        box_tag = create_box_with_meshseed (kernel, x1, y1, z1, x2, y2, z2, meshseed)
         tags_created_3D[materialname].append(box_tag)
-
-        # workaround to avoid gsmh meshing error: alternating size of stacked dielectric blocks
-        if offset == 0:
-            offset = offset_delta
-        else:
-            offset = 0    
 
     # add surrounding air box
 
@@ -528,6 +525,9 @@ def add_dielectrics (kernel, materials_list, dielectrics_list, gds_layers_list, 
 
     box_tag = kernel.addBox(x1,y1,z1,x2-x1,y2-y1,z2-z1)
     tags_created_3D['airbox'] = [box_tag]
+
+    # Try removing duplicates at this stage
+    gmsh.model.occ.removeAllDuplicates()
 
     kernel.synchronize()
 
@@ -689,6 +689,23 @@ def add_ports (kernel, allpolygons, metals_list, simulation_ports, meshseed = 0)
 
 ######### end of function createSimulation ()  ##########
 
+def create_elmer (excite_ports, settings):
+    """Create output file for Elmer FEM. 
+
+    Args:
+        excite_ports (list of int): list of ports that are excited (active)
+        settings (dict): simulation settings
+
+    Returns:
+        config_name(string), data_dir (string): create model files here
+    """
+    # configure for Elmer output
+    settings['elmer']=True
+    # now we can run main function
+    config_name, data_dir = create_model (excite_ports, settings)
+    return config_name, data_dir
+
+
 
 def create_palace (excite_ports, settings):
     """Create output file for Palace
@@ -698,15 +715,29 @@ def create_palace (excite_ports, settings):
         settings (dict): simulation settings
 
     Returns:
-        config_name(string), data_dir (string): created config.json and Palace result dir specified there
+        config_name(string), data_dir (string): create config.json and Palace result dir specified there
+    """
+    # the default is to create Palace output, but we can override this by settings['elmer']=True
+    config_name, data_dir = create_model (excite_ports, settings)
+    return config_name, data_dir
+    
+
+
+
+def create_model (excite_ports, settings):
+    """Create output file for Palace or Elmer
+
+    Args:
+        excite_ports (list of int): list of ports that are excited (active)
+        settings (dict): simulation settings
+
+    Returns:
+        config_name(string), data_dir (string): create config.json and Palace result dir specified there
     """
 
     def get_optional_setting (settings, key, default):
         # get setting that might exist, but is not required
-        value = default
-        if key in settings.keys():
-            value = settings[key]
-        return value    
+        return settings.get(key, default)    
 
     def get_surface_orientation (s):
         # get the normal of a surface, we use that to get surface orientation (x, y or z)
@@ -776,12 +807,12 @@ def create_palace (excite_ports, settings):
         print('No frequencies defined, you must define fstart+fstop or fpoint!')
         exit(1)
 
-    # Discrete frequencies list values must be in GHz, divide by 1e9
+    # Discrete frequencies list values for Palace must be in GHz, divide by 1e9
     if len(f_discrete_list) > 0:
         GHz = [f / 1e9 for f in f_discrete_list]
         f_discrete_list = GHz
 
-    # Discrete frequencies list values must be in GHz, divide by 1e9
+    # Discrete frequencies list values for Palace must be in GHz, divide by 1e9
     if len(f_dump_list) > 0:
         GHz = [f / 1e9 for f in f_dump_list]
         f_dump_list = GHz
@@ -837,6 +868,11 @@ def create_palace (excite_ports, settings):
     msh_name = os.path.join(sim_path, model_basename + '.msh')
     config_name = os.path.join(sim_path, 'config' + config_suffix + '.json')
     data_dir = 'output/' + model_basename 
+
+    # optional output for Elmer FEM
+    elmer = get_optional_setting(settings, 'elmer', False)
+    
+
 
     # parameter check
     # DC simulation gives errors for now, so replace that
@@ -994,6 +1030,9 @@ def create_palace (excite_ports, settings):
     # add units to port information
     all_port_information_struct['unit'] = unit
 
+    # add model name
+    all_port_information_struct['name'] = model_basename
+
 
     # add dielectric boxes (oxide, substrate, air etc) to gmsh model
     print('Adding dielectrics ...')
@@ -1010,8 +1049,15 @@ def create_palace (excite_ports, settings):
 
     # ---------------- VOLUMES -----------------
 
-    # for config file 
+    # for Palace config file 
     Palace_materials = []
+
+    # for Elmer config file
+    Elmer_materials = []
+    Elmer_bodies    = []
+    Elmer_boundaries = []
+    Elmer_ports = []
+
 
     # Next, we use our mapping between original tags and new tags, and assign physical names
     # Outer iteration is over the layer names
@@ -1022,7 +1068,7 @@ def create_palace (excite_ports, settings):
         phys_group = gmsh.model.addPhysicalGroup(3, new_tags, tag=-1)
         gmsh.model.setPhysicalName(3, phys_group, layername)
 
-        # config file
+        # Palace config file
         if len(new_tags) > 0:
             Palace_material = {}
             metal = metals_list.getbylayername(layername)
@@ -1040,6 +1086,27 @@ def create_palace (excite_ports, settings):
 
                     Palace_materials.append(Palace_material)
 
+        # Elmer config
+        if len(new_tags) > 0:
+            Elmer_material = {}
+            metal = metals_list.getbylayername(layername)
+            if metal is not None:
+                stackup_material = materials_list.get_by_name(metal.material)
+                if stackup_material is not None:
+                    Elmer_material['name']=stackup_material.name
+                    Elmer_material['permittivity']=stackup_material.eps
+                    Elmer_material['conductivity']=stackup_material.sigma
+                    
+                    Elmer_materials.append(Elmer_material)
+                    material_index = len(Elmer_materials)
+
+                    #physical group name was already set above, use that value
+                    Elmerbody = {}
+                    Elmerbody['name']=layername
+                    Elmerbody['material']=material_index
+                    Elmer_bodies.append(Elmerbody)
+
+
     kernel.synchronize()
 
     for dielectricname in dielectric_tags_created_3D.keys():
@@ -1051,7 +1118,7 @@ def create_palace (excite_ports, settings):
         gmsh.model.setPhysicalName(3, phys_group, dielectricname)
 
 
-        # config file
+        # Palace config file
         if len(new_tags) > 0:
             Palace_material = {}
             dielectric = dielectrics_list.get_by_name(dielectricname)
@@ -1072,7 +1139,45 @@ def create_palace (excite_ports, settings):
                     Palace_material['Permittivity']=1.0
                     Palace_material['LossTan']=0.0
                     Palace_materials.append(Palace_material)
-    
+
+
+
+        # Elmer config
+        if len(new_tags) > 0:
+            Elmer_material = {}
+            metal = metals_list.getbylayername(layername)
+            dielectric = dielectrics_list.get_by_name(dielectricname)
+            if dielectric is not None:
+                stackup_material = materials_list.get_by_name(dielectric.material)
+                if stackup_material is not None:
+                    Elmer_material['name']=stackup_material.name
+                    Elmer_material['permittivity']=stackup_material.eps
+                    Elmer_material['conductivity']=stackup_material.sigma
+                    
+                    Elmer_materials.append(Elmer_material)
+                    material_index = len(Elmer_materials)
+
+                    #physical group name was already set above, use that value
+                    Elmerbody = {}
+                    Elmerbody['name']=dielectricname
+                    Elmerbody['material']=material_index
+                    Elmer_bodies.append(Elmerbody)
+            else:
+                # special case airbox
+                if dielectricname=='airbox':
+                    Elmer_material['name']='airbox'
+                    Elmer_material['permittivity']=1.0
+                    Elmer_material['conductivity']=0.0
+                    
+                    Elmer_materials.append(Elmer_material)
+                    material_index = len(Elmer_materials)
+
+                    #physical group name was already set above, use that value
+                    Elmerbody = {}
+                    Elmerbody['name']='airbox'
+                    Elmerbody['material']=material_index
+                    Elmer_bodies.append(Elmerbody)
+
 
     kernel.synchronize()
 
@@ -1094,11 +1199,13 @@ def create_palace (excite_ports, settings):
     # MESHING: Get list of boundary line tags of all metals, used to refine mesh along the edges
     boundary_line_tags = []    
 
-    # CONFIG: config_data for surfaces in Palace config file
+    # PALACE CONFIG: config_data for surfaces in Palace config file
     boundaries = {}
     Palace_conductors = []
     Palace_lumpedports = []
     Palace_impedances = []
+
+
 
     # 2D surfaces from shell of hollow conductors (top, bottom and side walls)
     # one physical group per polygon (shared by all polygon surfaces)
@@ -1174,6 +1281,24 @@ def create_palace (excite_ports, settings):
                         Palace_conductor['Thickness']=metal.thickness * z_thickness_factor
                         Palace_conductors.append(Palace_conductor)
 
+            # Elmer config
+            # Present implementation with skin surface impedance does not care about thickness,
+            # so we can simplify things and treat xy and z surfaces the same for Palace
+            all_phys_surfacetags_for_layer = [] # combined xy and z
+            all_phys_surfacetags_for_layer.extend(all_phys_surfacetags_for_layer_xy)
+            all_phys_surfacetags_for_layer.extend(all_phys_surfacetags_for_layer_z)
+
+            if len(all_phys_surfacetags_for_layer)>0:
+                Elmer_boundary = {}
+                for tag in all_phys_surfacetags_for_layer:
+                    # get physical group name of surface
+                    Elmer_boundary = {}
+                    Elmer_boundary['name'] = gmsh.model.getPhysicalName(2,tag)
+                    Elmer_boundary['conductivity'] = stackup_material.sigma
+                    Elmer_boundary['thickness'] = metal.thickness * z_thickness_factor
+                    Elmer_boundaries.append(Elmer_boundary)
+
+
 
             # Meshing: get all boundary lines of metals, store the tags for local refinement
             for polysurface in metal_perpolytags_2D[layername]:
@@ -1207,7 +1332,7 @@ def create_palace (excite_ports, settings):
             for curvetag in ct:
                 boundary_line_tags.extend(curvetag)     
 
-        # config file
+        # Palace config file
         if len(new_tag) > 0:
             Palace_lumpedport = {}
             portnum = int(porttag.replace('P',''))
@@ -1225,6 +1350,27 @@ def create_palace (excite_ports, settings):
             Palace_lumpedport['Excitation'] = excite_group
             Palace_lumpedport['Attributes']=[phys_group]
             Palace_lumpedports.append(Palace_lumpedport)
+
+
+            # Elmer config
+            Elmer_port_boundary = {}
+            Elmer_port_boundary['name'] = porttag
+            Elmer_port_boundary['portnum'] = portnum
+            Elmer_port_boundary['Z0'] = port.port_Z0
+           
+            # convert direction to number for Elmer
+            if 'X' in port.direction.upper():
+                direction = 1
+            elif 'Y' in port.direction.upper():
+                direction = 2
+            else:
+                direction = 3
+            # polarity
+            if '-' in port.direction:
+                direction = - direction
+            Elmer_port_boundary['direction'] = direction
+            Elmer_ports.append(Elmer_port_boundary)
+
 
 
     # 2D surfaces from 2D thin sheets in metals section 
@@ -1268,8 +1414,6 @@ def create_palace (excite_ports, settings):
 
     kernel.synchronize()
 
-
-
     # get surface tags of airbox 
     airbox_volume_tag = dielectric_tags_created_3D['airbox'] 
     airbox_volume_tag = get_tag_after_fragment (airbox_volume_tag, geom_dimtags, geom_map, dimension=3)
@@ -1301,13 +1445,13 @@ def create_palace (excite_ports, settings):
 
 
     phys_group_PML = gmsh.model.addPhysicalGroup(2, PML_boundaries, tag=-1)
-    gmsh.model.setPhysicalName(2, phys_group_PML, 'Absorbing boundary')
+    gmsh.model.setPhysicalName(2, phys_group_PML, 'Absorbing_boundary')
 
     phys_group_PEC = gmsh.model.addPhysicalGroup(2, PEC_boundaries, tag=-1)
-    gmsh.model.setPhysicalName(2, phys_group_PEC, 'PEC boundary')
+    gmsh.model.setPhysicalName(2, phys_group_PEC, 'PEC_boundary')
 
     phys_group_PMC = gmsh.model.addPhysicalGroup(2, PMC_boundaries, tag=-1)
-    gmsh.model.setPhysicalName(2, phys_group_PMC, 'PMC boundary')
+    gmsh.model.setPhysicalName(2, phys_group_PMC, 'PMC_boundary')
 
 
     # config file entry for absorbing simulation boundary (we have no real PML yet, use 2nd order absorbing)
@@ -1339,17 +1483,174 @@ def create_palace (excite_ports, settings):
     config_data['Boundaries'] = boundaries
 
 
-
-    # write JSON simulation config file now, so that we can verify it while geometry is open in gmsh GUI
-    with open(config_name, 'w', encoding='utf-8') as f:
-        json.dump(config_data, f, ensure_ascii=False, indent=4)
-    f.close()
-
     # write JSON with port information to Palace outputmodel directory
     port_information_file = os.path.join(sim_path, 'port_information' + config_suffix + '.json')
     with open(port_information_file, 'w', encoding='utf-8') as f:
         json.dump(all_port_information_struct, f, ensure_ascii=False, indent=4)
     f.close()
+
+    
+    # write Palace JSON simulation config file now, so that we can verify it while geometry is open in gmsh GUI
+    if not elmer: # create Palace when not Elmer solver requested
+        with open(config_name, 'w', encoding='utf-8') as f:
+            json.dump(config_data, f, ensure_ascii=False, indent=4)
+        f.close()
+
+
+    # Optional output for Elmer FEM solver
+    if elmer:
+
+        # write simulation frequencies for Elmer
+        elmer_freq_file = os.path.join(sim_path, 'frequencies.dat')
+        with open(elmer_freq_file, "w") as freqfile:  
+            frequency_list = []
+            
+            if (fstart is not None) and (fstop is not None):
+                f = fstart
+                if (fstop > fstart) and (fstep > 0):
+                    while f <= fstop:
+                        frequency_list.append(f)
+                        f = f + fstep                
+                # always include last value
+                if fstop not in frequency_list:
+                    frequency_list.append(fstop)
+            
+            # append f_discrete_list 
+            if len(f_discrete_list) > 0:
+                # internal list is in GHz, convert to Hz
+                f_discrete_list_Hz = [f * 1e9 for f in f_discrete_list]
+                frequency_list.extend(f_discrete_list_Hz)
+
+            # append f_dump_list 
+            if len(f_dump_list) > 0:
+                # internal list is in GHz, convert to Hz
+                f_dump_list_Hz = [f * 1e9 for f in f_dump_list]
+                frequency_list.extend(f_dump_list_Hz)
+
+            # sort and write to file
+            frequency_list.sort()
+            for n, freq in enumerate(frequency_list):
+                freqfile.write(f"{n+1}  {freq:.3e}\n")
+
+            # store number of frequencies because we need to write that to physics.sif
+            num_frequencies = n+1
+
+        freqfile.close()   
+
+        # write *.sif file for Elmer
+        elmer_sif_file = os.path.join(sim_path, 'physics.sif')
+        with open(elmer_sif_file, "w") as f:  
+            
+            # specify storage of dump files
+            item = '! Dont save vtu files (other options: "after timestep", "after all")\n'
+            item = item + 'Solver 3 :: Exec Solver = String "never"\n\n'
+            f.write(item + '\n')
+
+            # frequency block that references output file frequencies.dat
+            item = f'Simulation\n  timestep intervals(1) = {num_frequencies}\nend\n'
+            f.write(item + '\n')
+
+            item = 'Solver 1\n' 
+            item = item + '   frequency = variable time\n'
+            item = item + '     real\n'
+            item = item + '       include frequencies.dat\n'
+            item = item + '     end\n'
+            item = item + 'End\n'
+            f.write(item + '\n')
+
+
+            # write Material sections
+            for n,material in enumerate(Elmer_materials):
+                materialname = material["name"]
+                permittivity = material["permittivity"]
+                conductivity = material["conductivity"]
+                permeability = 1.0
+
+                item = f'Material {n+1}\n   name = string "{materialname}"\n'
+                item = item + f"   relative permittivity = {permittivity}\n"
+                item = item + f"   electric conductivity = {conductivity}\n"
+                item = item + f"   relative permeability = {permeability}\n"
+                item = item + "End\n"
+                f.write(item + "\n")
+
+            # write Bodies sections
+            for n,body in enumerate(Elmer_bodies):
+                name = body["name"]
+                material = body["material"]
+                item = f'Body {n+1}\n   Equation = Integer 1\n'
+                item = item + f'   Name = "{name}"\n'
+                item = item + f"   material = {material}\n"
+                item = item + "End\n"
+                f.write(item + '\n')
+
+            # write metal boundaries section
+            for n,boundary in enumerate(Elmer_boundaries):
+                name = boundary["name"]
+                conductivity = boundary["conductivity"]
+                thickness_SI = boundary["thickness"]*unit
+                item = f'Boundary Condition {n+1}\n'
+                item = item + f'   Name = "{name}"\n'
+                item = item + f'   Layer Relative Reluctivity = Real 1.0\n'
+                item = item + f'   Layer Electric Conductivity = Real {conductivity:.3f}\n'
+                item = item + f"   Good Conductor BC = True\n"
+                item = item +  '   ! Either use "good conductor" or give layer thickness.\n'
+                item = item + f"   !Layer Thickness = {thickness_SI:.3e}\n"
+                item = item + "End\n"
+                f.write(item + '\n')
+
+            # write port boundaries section
+            for boundary in Elmer_ports:
+                n = n+1 # continue number range started in metal boundaries
+                name = boundary["name"]
+                portnum = boundary["portnum"]
+                portZ0 = boundary["Z0"]
+                direction = boundary["direction"]
+                item = f'Boundary Condition {n+1}\n'
+                item = item + f'   Name = "{name}"\n'
+                item = item + f'   Constraint Mode = {portnum}\n'
+                item = item + f'   Port Type = String "rectangular"\n'
+                item = item + f'   Port Impedance = Real {portZ0}\n'
+                item = item + f'   Port Direction = Integer {direction}\n'
+                item = item + "End\n"
+                f.write(item + '\n')
+
+
+            # write outer simulation boundary
+            if len(PEC_boundaries) > 0:
+                n = n+1
+                name = 'PEC_boundary'
+                item = f'Boundary Condition {n+1}\n'
+                item = item + f'   Name = "{name}"\n'
+                item = item +  '   E re {e} = Real 0\n'
+                item = item +  '   E im {e} = Real 0\n'
+                item = item + "End\n"
+                f.write(item + '\n')
+
+
+            if len(PML_boundaries) > 0:
+                n = n+1
+                name = 'Absorbing_boundary'
+                item = f'Boundary Condition {n+1}\n'
+                item = item + f'   Name = "{name}"\n'
+                item = item + f'   Absorbing BC = True\n'
+                item = item + "End\n"
+                f.write(item + '\n')
+
+            if len(PMC_boundaries) > 0:
+                print('PMC boundaries are not supported by Elmer workflow')
+                f.close()   
+                exit(1)
+
+
+        f.close()   
+
+
+
+
+        elmer_start_file = os.path.join(sim_path, 'ELMERSOLVER_STARTINFO')
+        with open(elmer_start_file, "w") as f:  
+            f.write('case.sif\n')
+        f.close()   
 
     
     if save_gmsh_geometry:
@@ -1531,11 +1832,74 @@ def create_palace (excite_ports, settings):
         gmsh.write(msh_name)
         # show meshed model in gmsh GUI
         if not no_gui:
+
+            if False:
+                # hide physical volumes in viewer
+                # Step 1: Get all physical volumes
+                volume_groups = [(dim, tag) for dim, tag in gmsh.model.getPhysicalGroups() if dim == 3]
+
+                # Step 2: Collect all volume entities AND their surfaces
+                entities_to_hide = []
+                for dim, vol_tag in volume_groups:
+                    # Get the actual volume entities
+                    volumes = gmsh.model.getEntitiesForPhysicalGroup(dim, vol_tag)
+                    
+                    for vol in volumes:
+                        entities_to_hide.append((3, vol))  # hide volume itself
+                        # gmsh.model.getAdjacencies(dimFrom, tagFrom) → returns (entityDim[], entityTags[])
+                        _, surface_tags = gmsh.model.getAdjacencies(3, vol)  # dimFrom=3, tag=vol
+                        for s in surface_tags:
+                            entities_to_hide.append((2, s))  # add surface to hide
+
+                # Step 3: Hide everything in the viewer
+                gmsh.model.setVisibility(entities_to_hide, False)        
+
             gmsh.fltk.run()
 
     
     gmsh.clear()
     gmsh.finalize()
+
+    # Optional convert mesh to Elmer format
+    if elmer:
+        # mesh name is: msh_name
+        # mesh directory is: sim_path
+        # ElmerGrid.exe 14 2 <*.msh> -autoclean -out <meshdir>
+
+        mesh_path = os.path.join(sim_path, 'mesh' )
+
+        ElmerGrid = ""
+
+        if platform.system() == "Windows":
+            Elmer_home = os.environ.get("ELMER_HOME")
+            if Elmer_home != '':
+                ElmerGrid  = os.path.join(Elmer_home, "bin", "ElmerGrid.exe")
+        else: 
+            ElmerGrid = "ElmerGrid"
+
+        
+        if ElmerGrid != "":
+
+            # Command as a list of arguments
+            cmd = [
+                ElmerGrid,
+                "14",
+                "2",
+                msh_name.replace('\\','/'),
+                "-autoclean",
+                "-out",
+                mesh_path.replace('\\','/')
+            ]
+
+            # Run the command
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            # Print output and errors
+            print("STDOUT:\n", result.stdout)
+            if len(result.stderr)>0:
+                print("STDERR:\n", result.stderr)
+        else:
+            print('Location of ElmerGrid executable unknown, cannot run mesh conversion automatically.\n', cmd)
 
     return config_name, data_dir
 
