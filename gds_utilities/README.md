@@ -19,6 +19,7 @@ Example input file with square holes in the center:
 <img src="../doc/png/cutout1.png" alt="cutout" width="700">
 
 Result after running gds_simplify:
+
 <img src="../doc/png/cutout2.png" alt="cutout" width="700">
 
 
@@ -39,11 +40,12 @@ Example input file with via array under pad (shown: TopVia1, TopVia2, TopMetal2)
 <img src="../doc/png/viaarray1.png" alt="vias" width="700">
 
 Result after running gds_viamerge:
+
 <img src="../doc/png/viaarray2.png" alt="vias" width="700">
 
 The vias are merged into larger polygons, but for TopVia1 the resulting shape is two pieces instead of one circle. This depends on the values used for array merging (oversize value) and can be fixed by manual merging in klayout.
 
-When the via arrays under the pads are merged into one circle-like polygon shape, we could run gds_simplify again to detect this and create a clean octagon shape instead of the circle-like polygon with hundreds of edges. The large amount of edges would result in a complex dense mesh, the octagon is much nicer for FEM meshing.
+**When the via arrays under the pads are merged into one circle-like polygon shape, we could run gds_simplify again to detect this and create a clean octagon shape instead of the circle-like polygon with hundreds of edges. The large amount of edges would result in a complex dense mesh, the octagon is much nicer for FEM meshing.**
 
 
 
