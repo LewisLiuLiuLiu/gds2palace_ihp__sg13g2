@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
 import os, tempfile, platform, sys, importlib
+from . import util_elmer 
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # ============================== filename and path  =================================
 
@@ -32,7 +33,7 @@ def get_basename (filename):
     basename = basename.replace('.py','')
     return basename
 
-def create_sim_path (script_path, model_basename):
+def create_sim_path (script_path, model_basename, dirname='palace_model'):
     """set directory for simulation output, create path if it does not exist. 
 
     Args:
@@ -43,12 +44,12 @@ def create_sim_path (script_path, model_basename):
         _type_: _description_
     """
     # set directory for simulation output, create path if it does not exist
-    base_path = os.path.join(script_path, 'palace_model')
+    base_path = os.path.join(script_path, dirname)
 
     # check if we might run into path length issues, leave some margin for nested subdiretories and filenames
     if platform.system() == "Windows" and len(base_path) > 200:
         print('[WARNING] Path length limitation, using temp directory for simulation data')
-        base_path =  os.path.join(tempfile.gettempdir(), 'palace_model')
+        base_path =  os.path.join(tempfile.gettempdir(), dirname)
 
     # try to create data directory
     try: 
@@ -58,7 +59,7 @@ def create_sim_path (script_path, model_basename):
     except:
         print('[WARNING] Could not create simulation data directory ', sim_path)
         print('Now trying to use temp directory for simulation data!\n')
-        base_path =  os.path.join(tempfile.gettempdir(), 'palace_model')
+        base_path =  os.path.join(tempfile.gettempdir(), dirname)
         sim_path = os.path.join(base_path, model_basename + '_data')
 
     return sim_path
@@ -77,6 +78,30 @@ def create_run_script (destination_path):
     with open(cmd_filename, "w", newline='\n') as f:  # write with UNIX EOL
         f.write(txt)
     f.close()   
+
+
+def create_elmer_run_script (destination_path, settings):
+    """Create run script that can be used to start Elmer simulation and then run postprocessing
+    Args:
+        destination_path (string): target path for run script file
+        settings (dict): dictionary of model settings, we need to check multithreading setting here
+    """
+
+    ELMER_MPI_THREADS = util_elmer.get_ELMER_MPI_THREADS(settings)
+
+    if ELMER_MPI_THREADS==1:
+        txt = '#!/bin/bash\n'
+        txt = txt + 'ElmerSolver\n'
+        txt = txt + 'combine_snp\n'
+    else:
+        txt = '#!/bin/bash\n'
+        txt = txt + f'mpirun -np {ELMER_MPI_THREADS} ElmerSolver case.sif\n'
+        txt = txt + 'combine_snp\n'
+
+    cmd_filename = os.path.join(destination_path, 'run_elmer')
+    with open(cmd_filename, "w", newline='\n') as f:  # write with UNIX EOL
+        f.write(txt)
+    f.close()       
 
 
 def check_module_version(module_name, expected_version):

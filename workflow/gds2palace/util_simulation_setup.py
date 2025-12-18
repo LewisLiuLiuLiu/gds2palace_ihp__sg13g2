@@ -18,18 +18,17 @@
 
 # -*- coding: utf-8 -*-
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 import os
 import sys
 import gmsh
 import math
-import subprocess
-import platform
-
 import numpy as np
-
 import json
+
+from . import util_elmer 
+
 
 def get_tag_after_fragment (tag_to_find_list, geom_dimtags, mapping, dimension=2):
     '''    
@@ -253,10 +252,17 @@ def add_metals (allpolygons, metals_list, meshseed=0):
                 vertextaglist = []
                 numvertices = len(poly.pts_x)
 
+                # store vertex info for debugging
+                debug_vertices = False
+                if debug_vertices: 
+                    vertex_info = {}
+                
                 for v in range(numvertices):
                     # addPoint parameters: x (double), y (double), z (double), meshSize = 0. (double), tag = -1 (integer)
                     vertextag = kernel.addPoint(poly.pts_x[v], poly.pts_y[v], metal.zmin, meshseed, -1)
                     vertextaglist.append(vertextag)
+                    if debug_vertices: 
+                        vertex_info[vertextag] = f"x={poly.pts_x[v]} y={poly.pts_y[v]}"
 
                 # after writing the vertices, we combine them to boundary lines
                 for v in range(numvertices):
@@ -267,8 +273,16 @@ def add_metals (allpolygons, metals_list, meshseed=0):
                         pt_end = vertextaglist[v+1]
 
                     # addLine parameters: startTag (integer), endTag (integer), tag = -1 (integer)
-                    linetag = kernel.addLine(pt_start, pt_end, -1)
-                    linetaglist.append(linetag)
+                    try:
+                        linetag = kernel.addLine(pt_start, pt_end, -1)
+                        linetaglist.append(linetag)
+                    except:
+                        pass
+                        if debug_vertices: 
+                            print(f"skipping invalid line on layer {poly.layernum} ")
+                            print("  pt_start: ", str(pt_start), " -> ", vertex_info[pt_start])
+                            print("  pt_end: ", str(pt_end), " -> ", vertex_info[pt_end])
+
 
                 # after creating the lines, we can create a curve loop and a surface 
                 # to do so, we need the line segment numbers again
@@ -459,7 +473,10 @@ def add_dielectrics (kernel, materials_list, dielectrics_list, gds_layers_list, 
 
 
     # dielectrics from stackup
+    offset = 0 
     for dielectric in dielectrics_list.dielectrics:
+        offset_delta = margin/20 # some relevant offset for alternating dielectric dimensions (workaround for mesh error)
+
         # get CSX material object for this dielectric layers material name
         materialname = dielectric.material
         
@@ -493,8 +510,15 @@ def add_dielectrics (kernel, materials_list, dielectrics_list, gds_layers_list, 
         z1 = dielectric.zmin
         z2 = dielectric.zmax
        
-        box_tag = create_box_with_meshseed (kernel, x1, y1, z1, x2, y2, z2, meshseed)
+        box_tag = create_box_with_meshseed (kernel, x1-offset, y1-offset, z1, x2+offset, y2+offset, z2, meshseed)
         tags_created_3D[materialname].append(box_tag)
+
+        # workaround to avoid gsmh meshing error: alternating size of stacked dielectric blocks
+        if offset == 0:
+            offset = offset_delta
+        else:
+            offset = 0    
+
 
     # add surrounding air box
 
@@ -516,18 +540,17 @@ def add_dielectrics (kernel, materials_list, dielectrics_list, gds_layers_list, 
         z1 = z1 - air_zmin  
         z2 = z2 + air_zmax
 
-        # we have no dielectrics, but we need to get get xy size of g
+        # we have no dielectrics, but we need to get get xy size of drawing
         x1 = allpolygons.get_xmin() - air_xmin
         y1 = allpolygons.get_ymin() - air_ymin
         x2 = allpolygons.get_xmax() + air_xmax
         y2 = allpolygons.get_ymax() + air_ymax
 
-
     box_tag = kernel.addBox(x1,y1,z1,x2-x1,y2-y1,z2-z1)
     tags_created_3D['airbox'] = [box_tag]
 
     # Try removing duplicates at this stage
-    gmsh.model.occ.removeAllDuplicates()
+    # gmsh.model.occ.removeAllDuplicates()  # messed up some dielectrics mappings, we have lost oxide -> messed up with simulation boundary
 
     kernel.synchronize()
 
@@ -824,6 +847,9 @@ def create_model (excite_ports, settings):
     if (order < 1) or (order > 3):
         print('WARNING: Order of basis function must 1, 2 or 3.\nValue changed to default value order=2.')
         order = 2
+
+    # iterative solver setting for Elmer
+    iterative = get_optional_setting (settings, "iterative", False)
    
     simulation_ports = settings['simulation_ports'] 
     materials_list = settings['materials_list']
@@ -871,9 +897,12 @@ def create_model (excite_ports, settings):
 
     # optional output for Elmer FEM
     elmer = get_optional_setting(settings, 'elmer', False)
-    
 
-
+    # optional multithreading for Elmer FEM because it requires modifies settings in case.sif file
+    # (not used for Palace where multithreading is fully defined in external runs script)
+    ELMER_MPI_THREADS = util_elmer.get_ELMER_MPI_THREADS(settings)
+   
+   
     # parameter check
     # DC simulation gives errors for now, so replace that
     if fstart is not None:
@@ -1502,155 +1531,35 @@ def create_model (excite_ports, settings):
 
         # write simulation frequencies for Elmer
         elmer_freq_file = os.path.join(sim_path, 'frequencies.dat')
-        with open(elmer_freq_file, "w") as freqfile:  
-            frequency_list = []
-            
-            if (fstart is not None) and (fstop is not None):
-                f = fstart
-                if (fstop > fstart) and (fstep > 0):
-                    while f <= fstop:
-                        frequency_list.append(f)
-                        f = f + fstep                
-                # always include last value
-                if fstop not in frequency_list:
-                    frequency_list.append(fstop)
-            
-            # append f_discrete_list 
-            if len(f_discrete_list) > 0:
-                # internal list is in GHz, convert to Hz
-                f_discrete_list_Hz = [f * 1e9 for f in f_discrete_list]
-                frequency_list.extend(f_discrete_list_Hz)
-
-            # append f_dump_list 
-            if len(f_dump_list) > 0:
-                # internal list is in GHz, convert to Hz
-                f_dump_list_Hz = [f * 1e9 for f in f_dump_list]
-                frequency_list.extend(f_dump_list_Hz)
-
-            # sort and write to file
-            frequency_list.sort()
-            for n, freq in enumerate(frequency_list):
-                freqfile.write(f"{n+1}  {freq:.3e}\n")
-
-            # store number of frequencies because we need to write that to physics.sif
-            num_frequencies = n+1
-
-        freqfile.close()   
+        num_frequencies = util_elmer.write_elmer_frequencies (elmer_freq_file, 
+                                                                fstart, 
+                                                                fstop, 
+                                                                fstep, 
+                                                                f_discrete_list, 
+                                                                f_dump_list)
 
         # write *.sif file for Elmer
-        elmer_sif_file = os.path.join(sim_path, 'physics.sif')
-        with open(elmer_sif_file, "w") as f:  
-            
-            # specify storage of dump files
-            item = '! Dont save vtu files (other options: "after timestep", "after all")\n'
-            item = item + 'Solver 3 :: Exec Solver = String "never"\n\n'
-            f.write(item + '\n')
-
-            # frequency block that references output file frequencies.dat
-            item = f'Simulation\n  timestep intervals(1) = {num_frequencies}\nend\n'
-            f.write(item + '\n')
-
-            item = 'Solver 1\n' 
-            item = item + '   frequency = variable time\n'
-            item = item + '     real\n'
-            item = item + '       include frequencies.dat\n'
-            item = item + '     end\n'
-            item = item + 'End\n'
-            f.write(item + '\n')
-
-
-            # write Material sections
-            for n,material in enumerate(Elmer_materials):
-                materialname = material["name"]
-                permittivity = material["permittivity"]
-                conductivity = material["conductivity"]
-                permeability = 1.0
-
-                item = f'Material {n+1}\n   name = string "{materialname}"\n'
-                item = item + f"   relative permittivity = {permittivity}\n"
-                item = item + f"   electric conductivity = {conductivity}\n"
-                item = item + f"   relative permeability = {permeability}\n"
-                item = item + "End\n"
-                f.write(item + "\n")
-
-            # write Bodies sections
-            for n,body in enumerate(Elmer_bodies):
-                name = body["name"]
-                material = body["material"]
-                item = f'Body {n+1}\n   Equation = Integer 1\n'
-                item = item + f'   Name = "{name}"\n'
-                item = item + f"   material = {material}\n"
-                item = item + "End\n"
-                f.write(item + '\n')
-
-            # write metal boundaries section
-            for n,boundary in enumerate(Elmer_boundaries):
-                name = boundary["name"]
-                conductivity = boundary["conductivity"]
-                thickness_SI = boundary["thickness"]*unit
-                item = f'Boundary Condition {n+1}\n'
-                item = item + f'   Name = "{name}"\n'
-                item = item + f'   Layer Relative Reluctivity = Real 1.0\n'
-                item = item + f'   Layer Electric Conductivity = Real {conductivity:.3f}\n'
-                item = item + f"   Good Conductor BC = True\n"
-                item = item +  '   ! Either use "good conductor" or give layer thickness.\n'
-                item = item + f"   !Layer Thickness = {thickness_SI:.3e}\n"
-                item = item + "End\n"
-                f.write(item + '\n')
-
-            # write port boundaries section
-            for boundary in Elmer_ports:
-                n = n+1 # continue number range started in metal boundaries
-                name = boundary["name"]
-                portnum = boundary["portnum"]
-                portZ0 = boundary["Z0"]
-                direction = boundary["direction"]
-                item = f'Boundary Condition {n+1}\n'
-                item = item + f'   Name = "{name}"\n'
-                item = item + f'   Constraint Mode = {portnum}\n'
-                item = item + f'   Port Type = String "rectangular"\n'
-                item = item + f'   Port Impedance = Real {portZ0}\n'
-                item = item + f'   Port Direction = Integer {direction}\n'
-                item = item + "End\n"
-                f.write(item + '\n')
-
-
-            # write outer simulation boundary
-            if len(PEC_boundaries) > 0:
-                n = n+1
-                name = 'PEC_boundary'
-                item = f'Boundary Condition {n+1}\n'
-                item = item + f'   Name = "{name}"\n'
-                item = item +  '   E re {e} = Real 0\n'
-                item = item +  '   E im {e} = Real 0\n'
-                item = item + "End\n"
-                f.write(item + '\n')
-
-
-            if len(PML_boundaries) > 0:
-                n = n+1
-                name = 'Absorbing_boundary'
-                item = f'Boundary Condition {n+1}\n'
-                item = item + f'   Name = "{name}"\n'
-                item = item + f'   Absorbing BC = True\n'
-                item = item + "End\n"
-                f.write(item + '\n')
-
-            if len(PMC_boundaries) > 0:
-                print('PMC boundaries are not supported by Elmer workflow')
-                f.close()   
-                exit(1)
-
-
-        f.close()   
-
-
+        elmer_physics_file = os.path.join(sim_path, 'physics.sif')
+        util_elmer.write_elmer_physics_file (unit,
+                                                elmer_physics_file, 
+                                                num_frequencies, 
+                                                Elmer_materials, 
+                                                Elmer_bodies,
+                                                Elmer_boundaries,
+                                                Elmer_ports,
+                                                PEC_boundaries,
+                                                PML_boundaries,
+                                                PMC_boundaries)
 
 
         elmer_start_file = os.path.join(sim_path, 'ELMERSOLVER_STARTINFO')
         with open(elmer_start_file, "w") as f:  
             f.write('case.sif\n')
-        f.close()   
+        f.close()  
+
+
+        # write_case_and_solver_files (targetdir, order, iterative) 
+        util_elmer.write_case_and_solver_files (sim_path, order, iterative, ELMER_MPI_THREADS=ELMER_MPI_THREADS)
 
     
     if save_gmsh_geometry:
@@ -1833,7 +1742,7 @@ def create_model (excite_ports, settings):
         # show meshed model in gmsh GUI
         if not no_gui:
 
-            if False:
+            if no_preview:
                 # hide physical volumes in viewer
                 # Step 1: Get all physical volumes
                 volume_groups = [(dim, tag) for dim, tag in gmsh.model.getPhysicalGroups() if dim == 3]
@@ -1862,44 +1771,7 @@ def create_model (excite_ports, settings):
 
     # Optional convert mesh to Elmer format
     if elmer:
-        # mesh name is: msh_name
-        # mesh directory is: sim_path
-        # ElmerGrid.exe 14 2 <*.msh> -autoclean -out <meshdir>
-
-        mesh_path = os.path.join(sim_path, 'mesh' )
-
-        ElmerGrid = ""
-
-        if platform.system() == "Windows":
-            Elmer_home = os.environ.get("ELMER_HOME")
-            if Elmer_home != '':
-                ElmerGrid  = os.path.join(Elmer_home, "bin", "ElmerGrid.exe")
-        else: 
-            ElmerGrid = "ElmerGrid"
-
-        
-        if ElmerGrid != "":
-
-            # Command as a list of arguments
-            cmd = [
-                ElmerGrid,
-                "14",
-                "2",
-                msh_name.replace('\\','/'),
-                "-autoclean",
-                "-out",
-                mesh_path.replace('\\','/')
-            ]
-
-            # Run the command
-            result = subprocess.run(cmd, capture_output=True, text=True)
-
-            # Print output and errors
-            print("STDOUT:\n", result.stdout)
-            if len(result.stderr)>0:
-                print("STDERR:\n", result.stderr)
-        else:
-            print('Location of ElmerGrid executable unknown, cannot run mesh conversion automatically.\n', cmd)
+        util_elmer.convert_mesh_to_elmer (msh_name, ELMER_MPI_THREADS)
 
     return config_name, data_dir
 
