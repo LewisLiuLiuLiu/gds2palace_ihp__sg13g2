@@ -28,16 +28,27 @@ In addition to Palace that is required for simulation of the output files, these
 
 Documentation assumes that you have created a Python venv named "palace" in ~/venv/palace and installed the modules there.
 
+
+
 ## Installing Palace
 
 AWS Palace itself can be installed in multiple ways. For a smooth interaction with the gds2palace workflow, it is recommended to create some scripts that help running the model and convert the Palace results to SnP Touchstone files.
 
-For development of this workflow, Palace was installed using the Singularity/Apptainer installation method. This was rather simple and straightforward, even with no knowledge about container usage. The resulting apptainer file palace.sif can be integrated very easily in a Linux system like the Ubuntu 24.04 system used here, and can then be moved to other Linux machines using simple copy of the container file. Highly recommended! The script to start Palace from the apptainer is included in the scripts directory in this repository.
+For development of this workflow, Palace was installed using the Singularity/Apptainer installation method. This was rather simple and straightforward, even with no knowledge about container usage. The resulting apptainer file palace.sif can be integrated very easily in a Linux system like the Ubuntu 24.04 system used here, and can then be moved to other Linux machines using simple copy of the container file. The script to start Palace from the apptainer is included in the scripts directory in this repository.
 
-Notes on installing the Palace solver using apptainer:
+Notes on installing the Palace solver using **apptainer** container manager:
 [Installing Palace using Apptainer](./doc/Installing_Palace_using_Apptainer.pdf) 
 
-But of course, you can also use one of the other installation methods described on the AWS Palace web site. The gds2palace workflow does not change, it only creates the input files for Palace and does not care how you installed Palace, or on what platform you run the actual Palace simulation from these model files.
+Using the spack package manager, Palace can also be created from source with a few simple commands. All tools required by the build process will be downloaded and installed automatically by spack, so you can sit and watch while your system builds the software.
+
+Notes in compiling Palace using the **spack package manager for Linux**:
+[Installing Palace using spack](./doc/Installing_Palace_using_Spack.pdf) 
+
+Thread on compiling Palace using the **spack package manager for MacOS**:
+[Spack install for MacOS outdated?](https://github.com/awslabs/palace/issues/581) 
+
+You can use any of the installation methods described on the AWS Palace web site. The gds2palace workflow does not change, it only creates the input files for Palace and does not care how you installed Palace, or on what platform you run the actual Palace simulation from these model files. To start Palace from setupEM, a wrapper script **run_palace** is used, and this is where you point to your actual installation (even remote copy & remote simulation is possible).
+
 
 # Workflow
 The screenshot below shows the workflow: user input is the GDSII layout file and a Python script that configures the simulation model, pointing to the GDSII file and to the technology stackup file and defining simulation settings. 
