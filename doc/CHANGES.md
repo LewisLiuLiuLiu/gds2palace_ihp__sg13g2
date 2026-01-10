@@ -19,7 +19,8 @@ This is work in progress with frequent updates, which can be installed using
 Project source and documentation: 
 https://github.com/VolkerMuehlhaus/setupEM
 
-
+## 10-Jan-2025
+Fixed bug in port metadata information for in-plane ports, direction was not properly evaluated in some cases (check for "X" orientation was case sensitive). This resulted in incorrect port de-embedding, with width and length swapped for in-plane ports specified as "x" or "-x" direction. 
 
 ## 1-Dec-2025
 Instead of always having the gds2palace directory in your working directory, 
