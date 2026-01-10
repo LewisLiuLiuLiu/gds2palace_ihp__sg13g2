@@ -621,7 +621,7 @@ def add_ports (kernel, allpolygons, metals_list, simulation_ports, meshseed = 0)
                         pt4 = kernel.addPoint(xmax, ymin, zmin, meshseed, -1)
 
                         # port information that we write to Palace output directory
-                        if 'X' in port.direction:
+                        if 'X' in port.direction.upper():
                             length = xmax-xmin
                             width  = ymax-ymin
                         else:    
