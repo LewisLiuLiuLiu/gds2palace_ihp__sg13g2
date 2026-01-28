@@ -900,7 +900,8 @@ def create_model (excite_ports, settings):
 
     # optional multithreading for Elmer FEM because it requires modifies settings in case.sif file
     # (not used for Palace where multithreading is fully defined in external runs script)
-    ELMER_MPI_THREADS = util_elmer.get_ELMER_MPI_THREADS(settings)
+    if elmer:
+        ELMER_MPI_THREADS = util_elmer.get_ELMER_MPI_THREADS(settings)
    
    
     # parameter check
