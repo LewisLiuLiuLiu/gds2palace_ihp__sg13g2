@@ -2,7 +2,22 @@
 
 This is an (incomplete) list of changes and new features.
 
-## 10-Jan-2025
+## 10-Mar-2026
+A pre-generated apptainer container image for Palace version 0.15 is now available here:
+https://github.com/users/VolkerMuehlhaus/packages/container/package/palace_015
+
+
+To download the palace version 0.15 container into your current directory:
+
+```
+$ apptainer pull ghcr.io/volkermuehlhaus/palace_015:latest
+```
+
+This will save the container file to palace_015_latest.sif to your current directory. When using this container with scripts for the gds2palace workflow, make sure that the *.sif filename in the script matches your actual filename and file location where you stored the *.sif
+
+
+
+## 10-Jan-2026
 Fixed bug in port metadata information for in-plane ports, direction was not properly evaluated in some cases (check for "X" orientation was case sensitive). This resulted in incorrect port de-embedding, with width and length swapped for in-plane ports specified as "x" or "-x" direction. 
 
 

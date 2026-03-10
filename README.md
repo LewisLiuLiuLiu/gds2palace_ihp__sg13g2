@@ -37,10 +37,17 @@ AWS Palace itself can be installed in multiple ways. For a smooth interaction wi
 
 For development of this workflow, Palace was installed using the Singularity/Apptainer installation method. This was rather simple and straightforward, even with no knowledge about container usage. The resulting apptainer file palace.sif can be integrated very easily in a Linux system like the Ubuntu 24.04 system used here, and can then be moved to other Linux machines using simple copy of the container file. The script to start Palace from the apptainer is included in the scripts directory in this repository.
 
-Notes on installing the Palace solver using **apptainer** container manager:
+### Notes on installing the Palace solver using **apptainer container manager**:
+A detailed documentation is available here:
 [Installing Palace using Apptainer](./doc/Installing_Palace_using_Apptainer.pdf) 
 
-Using the spack package manager, Palace can also be created from source with a few simple commands. All tools required by the build process will be downloaded and installed automatically by spack, so you can sit and watch while your system builds the software.
+Starting in March 2026, a pre-built container image is available. To download the palace version 0.15 container into your current directory:
+```
+$ apptainer pull ghcr.io/volkermuehlhaus/palace_015:latest
+```
+
+### Notes on installing the Palace solver using **spack package manager**
+Palace can also be created from source with a few simple commands. All tools required by the build process will be downloaded and installed automatically by spack, so you can sit and watch while your system builds the software.
 
 Notes in compiling Palace using the **spack package manager for Linux**:
 [Installing Palace using spack](./doc/Installing_Palace_using_Spack.pdf) 
