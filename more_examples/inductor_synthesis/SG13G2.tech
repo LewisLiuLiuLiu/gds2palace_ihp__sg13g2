@@ -1,0 +1,120 @@
+# IHP SG13G2 techology
+
+grid = 0.005
+
+layer Activ diffusion
+    GDSIINum = 1
+    GDSIIType = 0
+endlayer
+
+layer pimpl implant
+    GDSIINum = 2
+    GDSIIType = 0
+endlayer
+
+layer Metal1 metal
+    GDSIINum = 8
+    GDSIIType = 0
+endlayer
+
+layer Metal22 metal
+    GDSIINum = 10
+    GDSIIType = 0
+endlayer
+
+layer Metal3 metal
+    GDSIINum = 30
+    GDSIIType = 0
+endlayer
+
+layer Metal4 metal
+    GDSIINum = 50
+    GDSIIType = 0
+endlayer
+
+layer Metal5 metal
+    GDSIINum = 67
+    GDSIIType = 0
+endlayer
+
+layer TopMetal1 metal
+    GDSIINum = 126
+    GDSIIType = 0
+endlayer
+
+layer TopMetal2 metal
+    GDSIINum = 134
+    GDSIIType = 0
+endlayer
+
+layer Cont via
+    GDSIINum = 6
+    GDSIIType = 0
+    topmet = Metal1
+    botmet = Activ
+    viaEnc = 0.07
+    viaSize = 0.16
+    viaSpace = 0.18
+endlayer
+
+layer Via1 via
+    GDSIINum = 19
+    GDSIIType = 0
+    topmet = Metal2
+    botmet = Metal1
+    viaEnc = 0.07
+    viaSize = 0.16
+    viaSpace = 0.20
+endlayer
+
+layer Via2 via
+    GDSIINum = 29
+    GDSIIType = 0
+    topmet = Metal3
+    botmet = Metal2
+    viaEnc = 0.05
+    viaSize = 0.19
+    viaSpace = 0.29
+endlayer
+
+layer Via3 via
+    GDSIINum = 49
+    GDSIIType = 0
+    topmet = Metal4
+    botmet = Metal3
+    viaEnc = 0.05
+    viaSize = 0.19
+    viaSpace = 0.29
+endlayer
+
+layer Via4 via
+    GDSIINum = 66
+    GDSIIType = 0
+    topmet = Metal5
+    botmet = Metal4
+    viaEnc = 0.05
+    viaSize = 0.19
+    viaSpace = 0.29
+endlayer
+
+layer TopVia1 via
+    GDSIINum = 125
+    GDSIIType = 0
+    topmet = TopMetal1
+    botmet = Metal5
+    viaEnc = 0.42
+    viaSize = 0.42
+    viaSpace = 0.42
+endlayer
+
+layer TopVia2 via
+    GDSIINum = 133
+    GDSIIType = 0
+    topmet = TopMetal2
+    botmet = TopMetal1
+    viaEnc = 0.50
+    viaSize = 0.90
+    viaSpace = 1.06
+endlayer
+
+
