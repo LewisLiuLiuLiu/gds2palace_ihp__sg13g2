@@ -1,6 +1,6 @@
 # Inductor synthesis using gds2palace and pcLab
 
-The example provided here creates a symmetric inductor layout in IHP SG13G2 technology fully automatically, based on a target L value at a target frequency. The geometry sweep range where possible implementations are evaluated is defined in the model code: range for width, spacing, number of turns. 
+The gds2palace example provided here creates a symmetric inductor layout in IHP SG13G2 technology fully automatically, based on a target L value at a target frequency. The geometry sweep range where possible implementations are evaluated is defined in the model code: range for width, spacing, number of turns. 
 
 The layout implementation is done by pcLab. pcLab is a collection of Python classes that generate GDSII layouts of integrated passive structures such as inductors and baluns, created by Dušan Grujić.
 
@@ -23,9 +23,10 @@ The gds2palace FEM simulation flow runs in non-GUI mode here, so that there is n
 settings['no_gui'] = True  # create files without showing 3D model
 ```
 
+
 ## Usage
 
-Acticate the Python venv where you can run gds2palace models. gds2palace must be installed as a Python module: pip install gds2palace. The Palace solver must be available and you must be able to run gds2palace models.
+Acticate the Python venv where you can run gds2palace models. gds2palace must be installed as a Python module: pip install gds2palace. The Palace solver must be available and you must be able to run gds2palace models. If you are not familar with gds2palace, go to the gds2palace documentation [here](https://github.com/VolkerMuehlhaus/gds2palace_ihp_sg13g2).
 
 In the `synthesize_inductor_v10.py` script, set your target L value and target frequency, and adjust the search range for w,s and number of turns. Then just run the Python script.
 
