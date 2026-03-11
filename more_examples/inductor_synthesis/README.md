@@ -18,6 +18,11 @@ This is what this script does for you:
 - Step 6: After m iterations over step 5, select the candidate with the highest Q factor and do a wideband full sweep using gds2palace FEM with full accuracy.
 - Step 7: Plot results for L and Q factor of that best candidate
 
+The gds2palace FEM simulation flow runs in non-GUI mode here, so that there is no user action required while the script is processing data. 
+```
+settings['no_gui'] = True  # create files without showing 3D model
+```
+
 ## Usage
 
 Acticate the Python venv where you can run gds2palace models. gds2palace must be installed as a Python module: pip install gds2palace. The Palace solver must be available and you must be able to run gds2palace models.
