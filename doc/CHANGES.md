@@ -2,18 +2,18 @@
 
 This is an (incomplete) list of changes and new features.
 
-## 10-Mar-2026
-A pre-generated apptainer container image for Palace version 0.15 is now available here:
-https://github.com/users/VolkerMuehlhaus/packages/container/package/palace_015
+## 15-Mar-2026
+A pre-generated apptainer container image for Palace version 0.16 is now available here:
+https://github.com/users/VolkerMuehlhaus/packages/container/package/palace_016
 
 
-To download the palace version 0.15 container into your current directory:
+To download the palace version 0.16 container into your current directory:
 
 ```
-$ apptainer pull ghcr.io/volkermuehlhaus/palace_015:latest
+$ apptainer pull ghcr.io/volkermuehlhaus/palace_016:latest
 ```
 
-This will save the container file to palace_015_latest.sif to your current directory. When using this container with scripts for the gds2palace workflow, make sure that the *.sif filename in the script matches your actual filename and file location where you stored the *.sif
+This will save the container file to palace_016_latest.sif to your current directory. When using this container with scripts for the gds2palace workflow, make sure that the *.sif filename in the script matches your actual filename and file location where you stored the *.sif
 
 
 

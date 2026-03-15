@@ -41,9 +41,9 @@ For development of this workflow, Palace was installed using the Singularity/App
 A detailed documentation is available here:
 [Installing Palace using Apptainer](./doc/Installing_Palace_using_Apptainer.pdf) 
 
-Starting in March 2026, a pre-built container image is available. To download the palace version 0.15 container into your current directory:
+Starting in March 2026, a pre-built container image is available. To download the palace version 0.16 container into your current directory:
 ```
-$ apptainer pull ghcr.io/volkermuehlhaus/palace_015:latest
+$ apptainer pull ghcr.io/volkermuehlhaus/palace_016:latest
 ```
 
 ### Notes on installing the Palace solver using **spack package manager**
@@ -112,11 +112,11 @@ For workflow development and test, Palace was installed into an apptainer contai
 
 ![run_palace](./doc/png/run_palace.png)
 
-Running Palace is not very spectacular, the simulation progress is shown in the terminal window.
+Running Palace is not very spectacular, the simulation progress is shown in the terminal window. 
 
 ![palace_solver](./doc/png/palace_solver.png)
 
-When “run_palace” is finished, Palace output files are created in the “output” directory below the simulation model directory. S-parameters are in *.csv file format, which we need to convert now.
+When “run_palace” is finished, Palace output files are created in the “output” directory below the simulation model directory. A simulation log file is stored in file `palace.json` and from Palace version 0.16 on, this also logs the required memory (total and per thread). S-parameters are in *.csv file format, which we need to convert now. 
 
 ![palace_output](./doc/png/palace_output.png)
 
